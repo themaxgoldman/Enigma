@@ -11,8 +11,8 @@ class Enigma(Cypher):
         self.plugboard = Plugboard(enigma_string_split[0]) 
         speed_list = [1,26,26**2]
         self.rotors = [0,0,0]
-        self.rotors[0] = Rotor(enigma_string_split[1], 1)
-        self.rotors[1] = Rotor(enigma_string_split[2], 26)
+        self.rotors[0] = Rotor(enigma_string_split[1], 26**0)
+        self.rotors[1] = Rotor(enigma_string_split[2], 26**1)
         self.rotors[2] = Rotor(enigma_string_split[3], 26**2)
         self.reflector = Reflector(enigma_string_split[-1])
         
@@ -21,17 +21,20 @@ class Enigma(Cypher):
         return ''.join([self.__encrypt_letter(letter) for letter in message])
 
     def __encrypt_letter(self, letter : str) -> str:
-        plugboard_encyrption = self.plugboard.encode(letter)
-        rotors_encryption = plugboard_encyrption
+        plugboard_encryption = self.plugboard.encode(letter)
+        rotors_encryption = plugboard_encryption
         for i in range(len(self.rotors)):
-            rotors_encryption = self.rotors[i].encode(rotors_encryption)
+            rotors_encryption = self.rotors[i].encode(rotors_encryption,direction='f')
+
         reflector_encryption = self.reflector.encode(rotors_encryption)
+    
         rotors_encryption = reflector_encryption
         for i in reversed(range(len(self.rotors))):
-            rotors_encryption = self.rotors[i].encode(rotors_encryption,increase_count=False)
-        plugboard_encyrption = self.plugboard.encode(rotors_encryption)
+            rotors_encryption = self.rotors[i].encode(rotors_encryption,direction='b')
 
-        return plugboard_encyrption
+        plugboard_encryption = self.plugboard.encode(rotors_encryption)
+
+        return plugboard_encryption
         
 
     def decrypt(self, message: str) -> str:
@@ -82,7 +85,7 @@ class Rotor:
         try:
             rotor,pos = rotor_string.split(',')
 
-            if len(set(list(rotor))) != 26 or not rotor.isalpha:
+            if len(set(list(rotor))) != 26 or not rotor.isalpha():
                 raise Exception()
 
             return rotor,pos
@@ -90,16 +93,25 @@ class Rotor:
             raise Exception("Invalid rotor string", e)
 
         
-    def encode(self, letter : str, increase_count : bool = True) -> str:
-        letter = letter.lower()
-        offset = ord(letter) - ord('a')
-        encoded_letter = self.rotor[(self.pos + offset) % 26]
-        
-        if increase_count:
+    def encode(self, letter : str, direction : str) -> str:
+        if (not letter.isalpha()):
+            return letter
+
+        if direction == 'f':
             self.count = self.count + 1 
             if (self.count == self.speed):
                 self.pos = (self.pos + 1) % 26
+                self.count = 0
 
+            letter = letter.lower()
+            offset = ord(letter) - ord('a')
+            encoded_letter = self.rotor[(self.pos + offset) % 26]
+        else:
+            letter = letter.lower()
+            offset = ord(letter) - ord('a')
+            idx = (self.rotor.index(letter) - self.pos) % 26
+            encoded_letter = chr(idx + ord('a'))
+        
         return encoded_letter
             
             
@@ -114,7 +126,7 @@ class Reflector:
 
     def __from__string(self, reflector_string: str) -> str:
         try:
-            if len(set(list(reflector_string))) != 26 or not reflector_string.isalpha:
+            if len(set(list(reflector_string))) != 26 or not reflector_string.isalpha():
                 raise Exception()
             
             reflector = {chr(n + ord('a')): reflector_string[n] for n in range(26)}
@@ -128,11 +140,11 @@ class Reflector:
             raise ValueError("Invalid reflector string")
         
     def encode(self, letter: str) -> str:
+        if (not letter.isalpha()):
+            return letter
         letter = letter.lower()
         return  self.reflector[letter]
             
-            
-
 
 
 # Plugboard: a/b e/r t/y l/o p/f c/v
@@ -142,16 +154,19 @@ class Reflector:
 # Reflector: badcfehgjilknmporqtsvuxwzy
 
 '''a/b e/r t/y l/o p/f c/v
-xcvbnmasdfghjklqwertyuiop,5
+zxcvbnmasdfghjklqwertyuiop,0
 qwertyuiopasdfghjklzxcvbnm,0
-qazwsxedcrfvtgbyhnujmikolp,20
+qazwsxedcrfvtgbyhnujmikolp,0
 badcfehgjilknmporqtsvuxwzy'''
 
 if __name__ == '__main__':
-    enigma_string = "a/b e/r t/y l/o p/f c/v\nzxcvbnmasdfghjklqwertyuiop,5\nqwertyuiopasdfghjklzxcvbnm,0\nqazwsxedcrfvtgbyhnujmikolp,20\nbadcfehgjilknmporqtsvuxwzy"
+    enigma_string = "a/b e/r t/y l/o p/f c/v\nzxcvbnmasdfghjklqwertyuiop,25\nqwertyuiopasdfghjklzxcvbnm,25\nqazwsxedcrfvtgbyhnujmikolp,25\nbadcfehgjilknmporqtsvuxwzy"
     enigma = Enigma(enigma_string)
-    encrypted = enigma.encrypt('helloworld')
-    print(encrypted)
+
+    encrypt_target = 'hello my name is max goldman and I am super cool I hope this is more than twenty six letters'
+
+    encrypted = enigma.encrypt(encrypt_target)
+
     enigma = Enigma(enigma_string)
     decrypted = enigma.encrypt(encrypted)
     print(decrypted)
