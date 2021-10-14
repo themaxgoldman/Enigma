@@ -1,56 +1,44 @@
 from cypher import Cypher
-
-class Enigma(Cypher):
-
-    # Plugboad - 6 letters are swapped (symmetric)
-    # Rotor - fast, middle, slow
-    # Reflector - swaps every letter (symmetric)
-
-    def __init__(self, enigma_string : str):
-        enigma_string_split = enigma_string.lower().split('\n')
-        self.plugboard = Plugboard(enigma_string_split[0]) 
-        speed_list = [1,26,26**2]
-        self.rotors = [0,0,0]
-        self.rotors[0] = Rotor(enigma_string_split[1], 26**0)
-        self.rotors[1] = Rotor(enigma_string_split[2], 26**1)
-        self.rotors[2] = Rotor(enigma_string_split[3], 26**2)
-        self.reflector = Reflector(enigma_string_split[-1])
-        
-
-    def encrypt(self, message: str) -> str:
-        return ''.join([self.__encrypt_letter(letter) for letter in message])
-
-    def __encrypt_letter(self, letter : str) -> str:
-        plugboard_encryption = self.plugboard.encode(letter)
-        rotors_encryption = plugboard_encryption
-        for i in range(len(self.rotors)):
-            rotors_encryption = self.rotors[i].encode(rotors_encryption,direction='f')
-
-        reflector_encryption = self.reflector.encode(rotors_encryption)
-    
-        rotors_encryption = reflector_encryption
-        for i in reversed(range(len(self.rotors))):
-            rotors_encryption = self.rotors[i].encode(rotors_encryption,direction='b')
-
-        plugboard_encryption = self.plugboard.encode(rotors_encryption)
-
-        return plugboard_encryption
-        
-
-    def decrypt(self, message: str) -> str:
-        return self.encrypt(message)
+from typing import List, Tuple
+from abc import ABC, abstractmethod
 
 
-    
-class Plugboard:
-    '''
-    The plugboard is the first component used in the encryption.
-    It allows letters to be swapped with other letters (symmetric) 
-    '''
-    def __init__(self, plugboard_string : str):
+class EnigmaComponent(ABC):
+    """
+    Abstract enigma component with common methods
+    """
+
+    @abstractmethod
+    def encode(self, letter: str, reverse: bool) -> str:
+        """
+        Encodes the letter
+
+        Args:
+            letter (str): the letter to encode
+            reverse (bool): if the signal has already been reflected through the enigma
+
+        Returns:
+            str: the component's encoding of the input
+        """
+
+        pass
+
+
+class _Plugboard(EnigmaComponent):
+    """
+    The plugboard enables swapping of pairs of letters and is the first component in the enigma
+    """
+
+    def __init__(self, plugboard_string: str):
+        """
+        Args:
+            plugboard_string (str): a string representation of the plugboard, encoded as a sequence of 'X/Y' pairs
+            separated by spaces (e.g. 'a/b c/d e/f g/h i/j')
+        """
+
         self.plugboard = self.__from_string(plugboard_string)
 
-    def __from_string(self, plugboard_string : str) -> str:
+    def __from_string(self, plugboard_string: str) -> str:
         plugboard = {}
 
         try:
@@ -59,114 +47,139 @@ class Plugboard:
                 plugboard[swap_letters[0]] = swap_letters[1]
                 plugboard[swap_letters[1]] = swap_letters[0]
         except Exception as e:
-            raise Exception("Invalid plugboard string", e)
+            raise ValueError(f"Invalid plugboard string - {plugboard_string}", e)
 
         return plugboard
-    
-    def encode(self, letter : str) -> str:
-        if letter in self.plugboard:
-            return self.plugboard[letter]
-        else:
-            return letter
-            
 
-class Rotor:
-    '''
-    Rotors map an index [0,25] to an letter
-    Depending on if the rotor is SLOW, MIDDLE, or FAST, the encoding will shift by 1 after a certain number of uses
-    '''
-    def __init__(self, rotor_string : str, speed : int):
-        self.rotor,self.pos = self.__from_string(rotor_string.lower())
-        self.pos = int(self.pos)
+    def encode(self, letter: str, reverse: bool = False) -> str:
+        return self.plugboard[letter] if letter in self.plugboard else letter
+
+
+class _Rotor(EnigmaComponent):
+    """
+    The rotors, which sit between the plugboard and the reflector, scramble the letters according to their alphabet and
+    current position. The rotors shift position after some fixed number of encodings as determined by their "speed",
+    with the first rotor shifting after every encoding, the second rotor shifting once the first rotor has completed a
+    full rotation, and so on
+    """
+
+    def __init__(self, rotor_string: str, speed: int):
+        """
+        Args:
+            rotor_string (str): a string representation of the rotor, encoded as a permutation of the alphabet followed
+            by its initial position (e.g. 'zxcvbnmasdfghjklqwertyuiop, 5')
+            speed (int): the number of encodings before the rotor is shifted
+        """
+
+        self.rotor, self.pos = self.__from_string(rotor_string.lower())
         self.speed = speed
         self.count = 0
 
-    def __from_string(self, rotor_string : str):
+    def __from_string(self, rotor_string: str) -> Tuple[str, int]:
         try:
-            rotor,pos = rotor_string.split(',')
+            rotor, pos = rotor_string.split(',')
 
-            if len(set(list(rotor))) != 26 or not rotor.isalpha():
-                raise Exception()
+            if len(rotor) != 26 or len(set(rotor)) != 26 or not rotor.isalpha():
+                raise ValueError("Rotor string is not a valid permutation of the alphabet")
 
-            return rotor,pos
+            return rotor, int(pos)
         except Exception as e:
-            raise Exception("Invalid rotor string", e)
+            raise ValueError(f"Invalid rotor string - {rotor_string}", e)
 
-        
-    def encode(self, letter : str, direction : str) -> str:
+    def encode(self, letter: str, reverse: bool = False) -> str:
         if (not letter.isalpha()):
             return letter
 
-        if direction == 'f':
-            self.count = self.count + 1 
+        if not reverse:
+            self.count += 1
             if (self.count == self.speed):
                 self.pos = (self.pos + 1) % 26
                 self.count = 0
 
-            letter = letter.lower()
             offset = ord(letter) - ord('a')
             encoded_letter = self.rotor[(self.pos + offset) % 26]
         else:
-            letter = letter.lower()
             offset = ord(letter) - ord('a')
             idx = (self.rotor.index(letter) - self.pos) % 26
             encoded_letter = chr(idx + ord('a'))
-        
+
         return encoded_letter
-            
-            
-            
 
-class Reflector:
-    '''
-    The reflector swaps each letter in the alphabet with another letter (symmetric)
-    '''
+
+class _Reflector(EnigmaComponent):
+    """
+    The reflector reflects the signal from the rotors back through the machine and encodes letters such that
+    encoding(k) = v iff encoding(v) = k
+    """
+
     def __init__(self, reflector_string: str):
-        self.reflector = self.__from__string(reflector_string)
+        """
+        Args:
+            reflector_string (str): a string representation of the reflector, encoded as a permutation of the
+            alphabet p such that p[ord(k)] = v iff p[ord(v)] == k (e.g. 'badcfehgjilknmporqtsvuxwzy')
+        """
 
-    def __from__string(self, reflector_string: str) -> str:
+        self.reflector = self.__from_string(reflector_string)
+
+    def __from_string(self, reflector_string: str) -> str:
         try:
-            if len(set(list(reflector_string))) != 26 or not reflector_string.isalpha():
-                raise Exception()
-            
-            reflector = {chr(n + ord('a')): reflector_string[n] for n in range(26)}
+            if len(reflector_string) != 26 or len(set(reflector_string)) != 26 or not reflector_string.isalpha():
+                raise ValueError("Reflector string is not a valid permutation of the alphabet")
 
-            for k,v in reflector.items():
+            reflector = {chr(i + ord('a')): reflector_string[i] for i in range(26)}
+
+            for k, v in reflector.items():
                 if reflector[v] != k:
-                    raise Exception()
-                    
+                    raise ValueError("Substitution must be symmetrical")
+
             return reflector
         except Exception as e:
-            raise ValueError("Invalid reflector string")
-        
-    def encode(self, letter: str) -> str:
+            raise ValueError(f"Invalid reflector string - {reflector_string}", e)
+
+    def encode(self, letter: str, reverse: bool = False) -> str:
         if (not letter.isalpha()):
             return letter
-        letter = letter.lower()
-        return  self.reflector[letter]
-            
+
+        return self.reflector[letter]
 
 
-# Plugboard: a/b e/r t/y l/o p/f c/v
-# Fast rotor, pos: zxcvbnmasdfghjklqwertyuiop, 5
-# Middle rotor, pos: qwertyuiopasdfghjklzxcvbnm, 0
-# Slow rotor, pos: qazwsxedcrfvtgbyhnujmikolp, 20
-# Reflector: badcfehgjilknmporqtsvuxwzy
+class Enigma(Cypher):
+    """
+    The engima machine, consisting of a plugboard, 1 or more rotors, and a reflector
+    """
 
-'''a/b e/r t/y l/o p/f c/v
-zxcvbnmasdfghjklqwertyuiop,0
-qwertyuiopasdfghjklzxcvbnm,0
-qazwsxedcrfvtgbyhnujmikolp,0
-badcfehgjilknmporqtsvuxwzy'''
+    def __init__(self, enigma_string: str):
+        """
+        Args:
+            enigma_string (str): a string representation of the enigma, encoded as a plugboard string,
+            followed by 1 or more rotor strings, followed by a reflector string
+        """
 
-if __name__ == '__main__':
-    enigma_string = "a/b e/r t/y l/o p/f c/v\nzxcvbnmasdfghjklqwertyuiop,25\nqwertyuiopasdfghjklzxcvbnm,25\nqazwsxedcrfvtgbyhnujmikolp,25\nbadcfehgjilknmporqtsvuxwzy"
-    enigma = Enigma(enigma_string)
+        self.plugboard, self.rotors, self.reflector = self.__from_string(enigma_string)
+        self.components = [self.plugboard] + self.rotors + [self.reflector]
 
-    encrypt_target = 'hello my name is max goldman and I am super cool I hope this is more than twenty six letters'
+    def __from_string(self, enigma_string: str) -> List[EnigmaComponent]:
+        component_strings = enigma_string.lower().split('\n')
+        try:
+            plugboard = _Plugboard(component_strings[0])
+            rotors = [_Rotor(component_strings[i], 26**(i-1)) for i in range(1, len(component_strings) - 1)]
+            reflector = _Reflector(component_strings[-1])
+        except Exception as e:
+            raise ValueError(f"Invalid enigma configuration - {enigma_string}", e)
 
-    encrypted = enigma.encrypt(encrypt_target)
+        return plugboard, rotors, reflector
 
-    enigma = Enigma(enigma_string)
-    decrypted = enigma.encrypt(encrypted)
-    print(decrypted)
+    def encrypt(self, message: str) -> str:
+        return ''.join([self.__encrypt_letter(letter) for letter in message.lower()])
+
+    def __encrypt_letter(self, letter: str) -> str:
+        for component in self.components:
+            letter = component.encode(letter)
+
+        for component in reversed(self.components):
+            letter = component.encode(letter, reverse=True)
+
+        return letter
+
+    def decrypt(self, message: str) -> str:
+        return self.encrypt(message)
