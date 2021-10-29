@@ -1,10 +1,20 @@
 from cypher import Cypher
 
 class CaesarCypher(Cypher):
+    """
+    A basic shift cypher
+    """    
     ALPHABET_LENGTH = 26
     ALPHA_OFFSET = ord('a')
 
     def __init__(self, key: str):
+        """
+        Args:
+            key (str): the letter from which to start the alphabet
+
+        Raises:
+            ValueError: if the provided key is not a valid alphabetic character
+        """        
         if type(key) is not str or len(key) is not 1:
             raise ValueError("Invalid key")
 
