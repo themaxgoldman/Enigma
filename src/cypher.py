@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class Cypher(ABC):
     """
     Abstract cypher class with common methods
@@ -15,7 +16,7 @@ class Cypher(ABC):
 
         Returns:
             str: the encrypted message
-        """        
+        """
         pass
 
     @abstractmethod
@@ -28,6 +29,5 @@ class Cypher(ABC):
 
         Returns:
             str: the decrypted message
-        """        
+        """
         pass
-    
